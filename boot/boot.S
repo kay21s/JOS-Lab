@@ -8,7 +8,10 @@
 .set PROT_MODE_CSEG, 0x8         # kernel code segment selector
 .set PROT_MODE_DSEG, 0x10        # kernel data segment selector
 .set CR0_PE_ON,      0x1         # protected mode enable flag
-
+.section .data
+BootMessage:
+	.ascii "Hello, OS World!"
+.section .text
 .globl start
 start:
   .code16                     # Assemble for 16-bit mode
@@ -20,6 +23,14 @@ start:
   movw    %ax,%ds             # -> Data Segment
   movw    %ax,%es             # -> Extra Segment
   movw    %ax,%ss             # -> Stack Segment
+
+  movw	$BootMessage, %ax
+  movw 	%ax, %bp
+  movw	$16, %cx
+  movw	$0x01301, %ax
+  movw	$0x000c, %bx
+  movb	$0, %dl
+  int $0x10
 
   # Enable A20:
   #   For backwards compatibility with the earliest PCs, physical
@@ -82,4 +93,3 @@ gdt:
 gdtdesc:
   .word   0x17                            # sizeof(gdt) - 1
   .long   gdt                             # address gdt
-
