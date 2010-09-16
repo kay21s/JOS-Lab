@@ -3,8 +3,12 @@
 #ifndef JOS_KERNEL
 # error "This is a JOS kernel header; user programs should not #include it"
 #endif
-
-struct Trapframe;
+#define ARG_NUM 5
+typedef struct Trapframe {
+	uint32_t ebp;
+	uint32_t eip;
+	uint32_t args[ARG_NUM];
+} Trapframe;
 
 // Activate the kernel monitor,
 // optionally providing a trap frame indicating the current state

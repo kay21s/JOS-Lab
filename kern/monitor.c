@@ -28,6 +28,7 @@ static struct Command commands[] = {
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
 unsigned read_eip();
+__inline void record_stack(struct Trapframe *) __attribute__((always_inline));
 
 /***** Implementations of basic kernel monitor commands *****/
 
@@ -60,10 +61,49 @@ int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
 	// Your code here.
+	struct Eipdebuginfo eip_info;
+#if defined(USING_RECORDED_FRAME)
+	// Print out the stack using recorded frame list
+	int i = 0, j = 0;
+	uint32_t ebp;
+
+	ebp = read_ebp();
+	cprintf("ebp %08x  eip %08x  args ", ebp, read_ret_eip(ebp)); 
+	for(i = 1; i <= ARG_NUM; i ++) {
+		cprintf("%08x ", read_arg(i, ebp));
+	}
+	cprintf("\n");
+
+	for(i = 0; i < argc; i++) {
+		cprintf("ebp %08x  eip %08x  args ", tf[i].ebp, tf[i].eip); 
+		for(j = 0; j < ARG_NUM; j ++) {
+			cprintf("%08x ", tf[i].args[j]);
+		}
+		cprintf("\n");
+	}
+#else 
+	// Trace the stack to its end
+	int i = 0;
+	uint32_t ebp, eip;
+
+	ebp = read_ebp();
+	
+	while (ebp != 0) {
+		eip = read_ret_eip(ebp);
+		cprintf("ebp %08x  eip %08x  args ", ebp, eip); 
+		for(i = 1; i <= ARG_NUM; i ++) {
+			cprintf("%08x ", read_arg(i, ebp));
+		}
+		cprintf("\n");
+
+		debuginfo_eip(eip, &eip_info);
+		cprintf("eip information : %s: %s:%d\n", eip_info.eip_file, eip_info.eip_fn_name, eip_info.eip_line);
+
+		ebp = read_pre_ebp(ebp);
+	}
+#endif
 	return 0;
 }
-
-
 
 /***** Kernel monitor command interpreter *****/
 
@@ -126,9 +166,23 @@ monitor(struct Trapframe *tf)
 	}
 }
 
+__inline void
+record_stack(struct Trapframe *tf)
+{
+	int i;
+
+	tf->ebp = read_ebp();
+	tf->eip = read_eip();
+	
+	for(i = 1; i <= ARG_NUM; i ++) {
+		tf->args[i-1] = read_arg(i, tf->ebp);
+	}
+}
+
 // return EIP of caller.
 // does not work if inlined.
 // putting at the end of the file seems to prevent inlining.
+//unsigned
 unsigned
 read_eip()
 {

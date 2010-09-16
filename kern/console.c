@@ -191,7 +191,8 @@ cga_putc(int c)
 		break;
 	}
 
-	// What is the purpose of this?
+	// When the screan gets full, move all the characters upwards by one row
+	// Clear the bottom row for further display
 	if (crt_pos >= CRT_SIZE) {
 		int i;
 

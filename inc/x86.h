@@ -32,6 +32,9 @@ static __inline uint32_t read_eflags(void) __attribute__((always_inline));
 static __inline void write_eflags(uint32_t eflags) __attribute__((always_inline));
 static __inline uint32_t read_ebp(void) __attribute__((always_inline));
 static __inline uint32_t read_esp(void) __attribute__((always_inline));
+static __inline uint32_t read_ret_eip(uint32_t) __attribute__((always_inline));
+static __inline uint32_t read_arg(int, uint32_t) __attribute__((always_inline));
+static __inline uint32_t read_pre_ebp(uint32_t) __attribute__((always_inline));
 static __inline void cpuid(uint32_t info, uint32_t *eaxp, uint32_t *ebxp, uint32_t *ecxp, uint32_t *edxp);
 static __inline uint64_t read_tsc(void) __attribute__((always_inline));
 
@@ -272,6 +275,46 @@ read_tsc(void)
         uint64_t tsc;
         __asm __volatile("rdtsc" : "=A" (tsc));
         return tsc;
+}
+
+//return args pushed by the caller
+static __inline uint32_t
+read_arg(int num, uint32_t baseptr)
+{
+	uint32_t arg;
+	uint32_t offset = (num + 1) * 4;
+
+	__asm __volatile("movl %2, %%eax\n\t;"
+	"addl %1, %%eax\n\t;"
+	"movl (%%eax), %0;" 
+	: "=r" (arg) 
+	: "g" (offset), "g" (baseptr) 
+	: "%eax");
+	return arg;
+}
+
+static __inline uint32_t
+read_pre_ebp(uint32_t cur_ebp)
+{
+	uint32_t pre_ebp;
+	__asm __volatile("movl %1, %%eax\n\t;"
+	"movl (%%eax), %0\n\t;"
+	: "=r" (pre_ebp)
+	: "g" (cur_ebp)
+	: "%eax");
+	return pre_ebp;
+}
+
+static __inline uint32_t
+read_ret_eip(uint32_t ebp)
+{
+	uint32_t callerpc;
+	__asm __volatile("movl %1, %%eax\n\t;"
+	"movl 4(%%eax), %0\n\t;"
+	: "=r" (callerpc)
+	: "g" (ebp)
+	: "%eax");
+	return callerpc;
 }
 
 #endif /* !JOS_INC_X86_H */

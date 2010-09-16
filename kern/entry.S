@@ -44,6 +44,11 @@ _start:
 	movw	$0x1234,0x472			# warm boot
 
 	# Establish our own GDT in place of the boot loader's temporary GDT.
+	# RELOC(x) ((x) - KERNBASE) in which KERNBASE = 0xf0000000
+	# The entire bottom 256MB of PC's physical address space, from 0x00000000
+	# to 0x0fffffff, to virtualaddresses 0xf0000000 through 0xffffffff
+	# But before the new virtual-to-physical mapping takes effect, the gdt table
+	# is in the place of the bottom space. So an address translation is needed.
 	lgdt	RELOC(mygdtdesc)		# load descriptor table
 
 	# Immediately reload all segment registers (including CS!)
