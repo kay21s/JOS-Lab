@@ -56,13 +56,21 @@ seta20.2:
   # and segment translation that makes virtual addresses 
   # identical to their physical addresses, so that the 
   # effective memory map does not change during the switch.
-  lgdt    gdtdesc
+  
+  # After the link address in boot/Makefrag is changed from 7c00 to 7d00, 
+  # the following modification can make the system run mordification -- 1 --
+  # lgdt    gdtdesc - 0x100
+  lgdt	  gdtdesc
   movl    %cr0, %eax
   orl     $CR0_PE_ON, %eax
   movl    %eax, %cr0
   
   # Jump to next instruction, but in 32-bit code segment.
   # Switches processor into 32-bit mode.
+
+  # After the link address in boot/Makefrag is changed from 7c00 to 7d00, 
+  # the following modification can make the system run mordification -- 2 --
+  # ljmp    $PROT_MODE_CSEG, $protcseg - 0x100
   ljmp    $PROT_MODE_CSEG, $protcseg
 
   .code32                     # Assemble for 32-bit mode
@@ -76,6 +84,10 @@ protcseg:
   movw    %ax, %ss                # -> SS: Stack Segment
   
   # Set up the stack pointer and call into C.
+
+  # After the link address in boot/Makefrag is changed from 7c00 to 7d00, 
+  # the following modification can make the system run mordification -- 3 --
+  # movl    $start - 0x100, %esp
   movl    $start, %esp
   call bootmain
 
@@ -92,4 +104,7 @@ gdt:
 
 gdtdesc:
   .word   0x17                            # sizeof(gdt) - 1
+  # After the link address in boot/Makefrag is changed from 7c00 to 7d00, 
+  # the following modification can make the system run mordification -- 3 --
+  # .long   gdt - 0x100                             # address gdt
   .long   gdt                             # address gdt
