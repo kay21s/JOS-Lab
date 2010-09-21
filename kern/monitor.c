@@ -12,6 +12,7 @@
 #include <kern/kdebug.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
+//#define USING_RECORDED_FRAME 1
 
 
 struct Command {
@@ -24,6 +25,7 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "backtrace", "Display stack information", mon_backtrace},
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
@@ -83,8 +85,9 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	}
 #else 
 	// Trace the stack to its end
-	int i = 0;
+	int i=0, j=0;
 	uint32_t ebp, eip;
+	char temp;
 
 	ebp = read_ebp();
 	
@@ -97,8 +100,10 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 		cprintf("\n");
 
 		debuginfo_eip(eip, &eip_info);
-		cprintf("eip information : %s: %s:%d\n", eip_info.eip_file, eip_info.eip_fn_name, eip_info.eip_line);
-
+		cprintf("eip information : %s:%d: ", eip_info.eip_file, eip_info.eip_line);
+		for(j=0; j<eip_info.eip_fn_namelen; j++)
+			cprintf("%c", eip_info.eip_fn_name[j]);
+		cprintf("+%d\n", eip - eip_info.eip_fn_addr);
 		ebp = read_pre_ebp(ebp);
 	}
 #endif

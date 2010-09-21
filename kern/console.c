@@ -429,9 +429,9 @@ cons_getc(void)
 static void
 cons_putc(int c)
 {
-	serial_putc(c);
-	lpt_putc(c);
-	cga_putc(c);
+	serial_putc(c); // Information will not be displayed in the terminal if this line is commented out
+	lpt_putc(c); // Seems to have no effects when this line is commented out
+	cga_putc(c); // Information will not be displayed in the QEMU if this line is commented out
 }
 
 // initialize the console devices
