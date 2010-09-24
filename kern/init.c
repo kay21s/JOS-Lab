@@ -7,6 +7,8 @@
 
 #include <kern/monitor.h>
 #include <kern/console.h>
+#include <kern/pmap.h>
+#include <kern/kclock.h>
 
 unsigned read_eip();
 __inline void record_stack(struct Trapframe *) __attribute__((always_inline));
@@ -63,6 +65,7 @@ i386_init(void)
 
 	cprintf("6828 decimal is %o octal!\n", 6828);
 
+#if defined(LAB1_ONLY)
 	/* ----- Exercise 8 of Lab 1 -----*/
 	int x=1,y=3,z=4;
 	cprintf("x %d, y %x, z %d\n", x, y, z);
@@ -73,9 +76,13 @@ i386_init(void)
 	// 'r' = 0x72, 'l' = 0x6c, 'd' = 0x64, '\0' = 0x00 which indicates the end of the string
 	// If the x86 is big-endian, 57616 -> 4321, 0x00646c72 -> 0x726c6400 
 
-
         // Test the stack backtrace function (lab 1 only)
 	test_backtrace(5);
+#endif
+
+	// Lab 2 memory management initialization functions
+	i386_detect_memory();
+	i386_vm_init();
 
 	// Drop into the kernel monitor.
 	while (1)
