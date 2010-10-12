@@ -6,14 +6,19 @@
 #include <inc/memlayout.h>
 #include <inc/assert.h>
 #include <inc/x86.h>
+#include <inc/util.h>
+#include <inc/error.h>
 
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 //#define USING_RECORDED_FRAME 1
 
+
+extern pde_t *boot_pgdir;
 
 struct Command {
 	const char *name;
@@ -26,6 +31,11 @@ static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "Display stack information", mon_backtrace},
+	{ "showmappings", "Display the physical page mappings and corresponding permission bits", mon_showmappings},
+	{ "showcontents", "Display the contents in a memory region, -p to use physical address,\n\t -v to use virtual address", mon_showcontents},
+	{ "alloc_page", "Alloc a page", mon_allocpage},
+	{ "free_page", "Free a page of a given address", mon_freepage},
+	{ "page_status", "Show if a page is freed or allocated", mon_pagestatus},
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
@@ -33,6 +43,178 @@ unsigned read_eip();
 __inline void record_stack(struct Trapframe *) __attribute__((always_inline));
 
 /***** Implementations of basic kernel monitor commands *****/
+
+int
+mon_allocpage(int argc, char **argv, Trapframe *tf)
+{
+	struct Page *page;
+	
+	if (page_alloc(&page) == -E_NO_MEM)
+		cprintf("Out of memory\n");
+	else
+		cprintf("\t0x%x\n", page2pa(page));
+	return 0;
+}
+
+int
+mon_freepage(int argc, char **argv, Trapframe *tf)
+{
+	physaddr_t phy;
+
+	if (argc < 2)
+		return 0;
+
+	phy = atoi(argv[1]);
+	page_free(pa2page(phy));
+	return 0;
+}
+
+int
+mon_pagestatus(int argc, char **argv, Trapframe *tf)
+{
+	physaddr_t phy;
+
+	if (argc < 2)
+		return 0;
+
+	phy = atoi(argv[1]);
+	cprintf("phy : 0x%x is ", phy);
+	
+	if (1 == page_status(pa2page(phy)))
+		cprintf("free\n");
+	else
+		cprintf("allocated\n");
+
+	return 0;
+}
+
+int
+mon_showcontents(int argc, char **argv, Trapframe *tf)
+{
+	pde_t *pgdir = boot_pgdir;
+	pte_t *pt_entry;
+	uintptr_t va1, va2;
+	uintptr_t va;
+	physaddr_t offset1, offset2;
+	physaddr_t offset;
+	uint32_t length;
+	int i = 0, j = 0, count = 0;
+
+	if (argc < 4) {
+		cprintf("Bad input\n");
+		return 0;
+	} else if(argc == 4) {
+		if (argv[1][1] == 'v') { // using physical address
+			
+			va1 = atoi(argv[2]);
+			va2 = atoi(argv[3]);
+			offset1 = va1 & 0x0fff;
+			offset2 = va2 & 0x0fff;
+			length = va2 - va1 + 1;
+
+			va = va1;
+			if (offset1 == 0) {
+				offset = PGSIZE;
+			} else {
+				offset = PGSIZE - offset1;
+			}
+			if (offset > va2 - va1) {
+				offset = va2 - va1 + 1;
+			}
+
+			while (length > 0) {
+			
+				for (i=0; i<offset; i++) {
+					cprintf("%c", va+i);
+					count ++;
+					if (count == 50) {
+						count = 0;
+						cprintf("\n");
+					}
+				}
+
+				j ++;
+				length -= i;
+				va = va1 + j * PGSIZE - offset1;
+
+				if (length <= PGSIZE && length == (offset2+1)) {
+					offset = offset2+1;
+				} else if (length > PGSIZE) {
+					offset = PGSIZE;
+				} else if (length == 0){
+					return 0;
+				} else {
+					cprintf("length = %d, i = %d ,offset2 = %d\n", length, i, offset2);
+				}
+
+			}
+			
+		} else if (argv[1][1] == 'p') {
+		}
+	}
+	return 0;
+}
+
+static void 
+show_page_table_entry_privilege(pte_t pt_entry)
+{
+	if (PTE_P & pt_entry) {
+		cprintf("PTE_P ");
+	}
+	if (PTE_W & pt_entry) {
+		cprintf("PTE_W ");
+	}
+	if (PTE_U & pt_entry) {
+		cprintf("PTE_U ");
+	}
+	if (PTE_PWT & pt_entry) {
+		cprintf("PTE_PWT ");
+	}
+	if (PTE_A & pt_entry) {
+		cprintf("PTE_A ");
+	}
+    	if (PTE_D & pt_entry) {
+		cprintf("PTE_D ");
+	}
+}
+
+int
+mon_showmappings(int argc, char **argv, struct Trapframe *tf)
+{
+	pde_t *pgdir = boot_pgdir;
+	pte_t *pt_entry;
+	uintptr_t va1, va2;
+	uintptr_t va;
+	
+	if (argc < 2) {
+		cprintf("Bad input\n");
+	} else if (argc == 2) {
+		va1 = atoi(argv[1]);
+		pt_entry = pgdir_walk(pgdir, (void *)va1, 0);
+		if (pt_entry == NULL) {
+			cprintf("Virtual address %s not mapped\n", argv[1]);
+		} else {
+			cprintf("0x%x --> 0x%x ", va1, PTE_ADDR(*pt_entry));
+			show_page_table_entry_privilege(*pt_entry);
+			cprintf("\n");
+		}
+	} else if (argc == 3) {
+		va1 = atoi(argv[1]);
+		va2 = atoi(argv[2]);
+		for (va=va1; va<=va2; va+=PGSIZE) {
+			pt_entry = pgdir_walk(pgdir, (void *)va, 0);
+			if (pt_entry == NULL) {
+				cprintf("Virtual address %s not mapped\n", argv[1]);
+			} else {
+				cprintf("0x%x --> 0x%x ", va, PTE_ADDR(*pt_entry));
+				show_page_table_entry_privilege(*pt_entry);
+				cprintf("\n");
+			}
+		}
+	}
+	return 0;
+}
+
 
 int
 mon_help(int argc, char **argv, struct Trapframe *tf)

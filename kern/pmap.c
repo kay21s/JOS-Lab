@@ -77,7 +77,8 @@ i386_detect_memory(void)
 	npage = maxpa / PGSIZE;
 
 	cprintf("Physical memory: %dK available, ", (int)(maxpa/1024));
-	cprintf("base = %dK, extended = %dK\n", (int)(basemem/1024), (int)(extmem/1024));
+	cprintf("base = %dK, extended = %dK, ", (int)(basemem/1024), (int)(extmem/1024));
+	cprintf("page number = %d\n", npage);
 }
 
 // --------------------------------------------------------------
@@ -122,12 +123,21 @@ boot_alloc(uint32_t n, uint32_t align)
 	//	Step 3: increase boot_freemem to record allocation
 	//	Step 4: return allocated chunk
 
-	
-	boot_freemem = (char *)(((uint32_t)boot_freemem + align - 1) & ~(align - 1));
+	boot_freemem = ROUNDUP(boot_freemem, align);
 	v = boot_freemem;
 	boot_freemem += n;
 
 	return v;
+}
+
+void
+print_pagelist_len()
+{
+	struct Page *elem;
+	int i=0;
+	LIST_FOREACH(elem, &page_free_list, pp_link)
+		i++;
+	cprintf("----------------------%d\n", i);
 }
 
 // Set up a two-level page table:
@@ -177,6 +187,7 @@ i386_vm_init(void)
 	// You must allocate the array yourself.
 	// Your code goes here: 
 	pages = boot_alloc(sizeof(struct Page) * npage, PGSIZE);
+	memset(pages, 0, sizeof(struct Page)*npage);
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -451,16 +462,15 @@ page_init(void)
 	}
 
 	// -- 4 -- kernel
-	for (i=EXTPHYSMEM/PGSIZE; i<PADDR(boot_freemem)/PGSIZE; i++) {
+	for (i=EXTPHYSMEM/PGSIZE; i<ROUNDUP(PADDR(boot_freemem), PGSIZE)/PGSIZE; i++) {
 		pages[i].pp_ref = 1;
 	}
 	
 	// -- 5 -- mark other as free
-	for (i=PADDR(boot_freemem)/PGSIZE; i<npage; i++) {
+	for (i=ROUNDUP(PADDR(boot_freemem), PGSIZE)/PGSIZE; i<npage; i++) {
 		pages[i].pp_ref = 0;
 		LIST_INSERT_HEAD(&page_free_list, &pages[i], pp_link);
 	}
-
 }
 
 //
@@ -495,6 +505,7 @@ page_alloc(struct Page **pp_store)
 	*pp_store = LIST_FIRST(&page_free_list);
 	if (NULL == *pp_store)
 		return -E_NO_MEM;
+
 	LIST_REMOVE(*pp_store, pp_link);
 	page_initpp(*pp_store);
 	return 0;
@@ -508,10 +519,27 @@ void
 page_free(struct Page *pp)
 {
 	// Fill this function in
-	if( pp->pp_ref != 0) {
+	if (pp->pp_ref != 0) {
 		panic("Page freed with pp_ref not zero!\n");
 	}
 	LIST_INSERT_HEAD(&page_free_list, pp, pp_link);
+}
+
+//
+// Check whether pp is in the free list
+// If it is free, return 1, else return 0;
+//
+int
+page_status(struct Page*pp)
+{
+	struct Page *elem;
+	int i=0;
+
+	LIST_FOREACH(elem, &page_free_list, pp_link) {
+		if (elem == pp)
+			return 1;
+	}
+	return 0;
 }
 
 //
@@ -634,7 +662,7 @@ boot_map_segment(pde_t *pgdir, uintptr_t la, size_t size, physaddr_t pa, int per
 {
 	// Fill this function in
 	pte_t *page_table_entry;
-	int n;
+	uintptr_t n;
 
 	for (n=0; n<size; n+=PGSIZE) {
 		page_table_entry = pgdir_walk(pgdir, (void *)(la+n), 1);

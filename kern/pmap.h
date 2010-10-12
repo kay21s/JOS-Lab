@@ -53,6 +53,7 @@ void	i386_detect_memory();
 void	page_init(void);
 int	page_alloc(struct Page **pp_store);
 void	page_free(struct Page *pp);
+int	page_status(struct Page *pp);
 int	page_insert(pde_t *pgdir, struct Page *pp, void *va, int perm);
 void	page_remove(pde_t *pgdir, void *va);
 struct Page *page_lookup(pde_t *pgdir, void *va, pte_t **pte_store);
