@@ -9,6 +9,8 @@
 #include <kern/console.h>
 #include <kern/pmap.h>
 #include <kern/kclock.h>
+#include <kern/env.h>
+#include <kern/trap.h>
 
 unsigned read_eip();
 __inline void record_stack(struct Trapframe *) __attribute__((always_inline));
@@ -18,32 +20,12 @@ test_backtrace(int x)
 {
 	static int count = 0;
 	int i;
-	static Trapframe frame_stack[6]; //FIXME: Assume at most five calls
 
 	count ++;
 	cprintf("entering test_backtrace %d\n", x);
 	if (x > 0) {
-#if defined(USE_ANOTHER_INLINE_FUNC)
-		record_stack(&(frame_stack[x]));
-#else		
-		frame_stack[x].ebp = read_ebp();
-		frame_stack[x].eip = read_eip();	
-		for(i = 1; i <= ARG_NUM; i ++) {
-			frame_stack[x].args[i-1] = read_arg(i, frame_stack[x].ebp);
-		}
-#endif
 		test_backtrace(x-1);
 	} else {
-#if defined(USE_ANOTHER_INLINE_FUNC)
-		record_stack(&(frame_stack[x]));
-#else		
-		frame_stack[x].ebp = read_ebp();
-		frame_stack[x].eip = read_eip();	
-		for(i = 1; i <= ARG_NUM; i ++) {
-			frame_stack[x].args[i-1] = read_arg(i, frame_stack[x].ebp);
-		}
-#endif
-		//mon_backtrace(count, 0, frame_stack);
 		mon_backtrace(0,0,0);
 	}
 	cprintf("leaving test_backtrace %d\n", x);
@@ -84,9 +66,28 @@ i386_init(void)
 	i386_detect_memory();
 	i386_vm_init();
 
+#if defined(LAB2_ONLY)
 	// Drop into the kernel monitor.
 	while (1)
 		monitor(NULL);
+#endif
+	// Lab 3 user environment initialization functions
+	env_init();
+	idt_init();
+ 
+ 
+	// Temporary test code specific to LAB 3
+#if defined(TEST)
+	// Don't touch -- used by grading script!
+	ENV_CREATE2(TEST, TESTSIZE);
+#else
+	// Touch all you want.
+	ENV_CREATE(user_hello);
+#endif // TEST*
+ 
+ 
+	// We only have one user environment for now, so just run it.
+	env_run(&envs[0]);
 }
 
 

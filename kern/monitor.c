@@ -12,6 +12,7 @@
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/trap.h>
 #include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
@@ -40,12 +41,68 @@ static struct Command commands[] = {
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
 unsigned read_eip();
-__inline void record_stack(struct Trapframe *) __attribute__((always_inline));
 
 /***** Implementations of basic kernel monitor commands *****/
 
 int
-mon_allocpage(int argc, char **argv, Trapframe *tf)
+mon_help(int argc, char **argv, struct Trapframe *tf)
+{
+	int i;
+
+	for (i = 0; i < NCOMMANDS; i++)
+		cprintf("%s - %s\n", commands[i].name, commands[i].desc);
+	return 0;
+}
+
+int
+mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
+{
+	extern char _start[], etext[], edata[], end[];
+
+	cprintf("Special kernel symbols:\n");
+	cprintf("  _start %08x (virt)  %08x (phys)\n", _start, _start - KERNBASE);
+	cprintf("  etext  %08x (virt)  %08x (phys)\n", etext, etext - KERNBASE);
+	cprintf("  edata  %08x (virt)  %08x (phys)\n", edata, edata - KERNBASE);
+	cprintf("  end    %08x (virt)  %08x (phys)\n", end, end - KERNBASE);
+	cprintf("Kernel executable memory footprint: %dKB\n",
+		(end-_start+1023)/1024);
+	return 0;
+}
+
+int
+mon_backtrace(int argc, char **argv, struct Trapframe *tf)
+{
+	// Your code here.
+	struct Eipdebuginfo eip_info;
+
+	// Trace the stack to its end
+	int i=0, j=0;
+	uint32_t ebp, eip;
+	char temp;
+
+	ebp = read_ebp();
+	
+	while (ebp != 0) {
+		eip = read_ret_eip(ebp);
+		cprintf("ebp %08x  eip %08x  args ", ebp, eip); 
+		for(i = 1; i <= ARG_NUM; i ++) {
+			cprintf("%08x ", read_arg(i, ebp));
+		}
+		cprintf("\n");
+
+		debuginfo_eip(eip, &eip_info);
+		cprintf("eip information : %s:%d: ", eip_info.eip_file, eip_info.eip_line);
+		for(j=0; j<eip_info.eip_fn_namelen; j++)
+			cprintf("%c", eip_info.eip_fn_name[j]);
+		cprintf("+%d\n", eip - eip_info.eip_fn_addr);
+		ebp = read_pre_ebp(ebp);
+	}
+
+	return 0;
+}
+
+int
+mon_allocpage(int argc, char **argv, struct Trapframe *tf)
 {
 	struct Page *page;
 	
@@ -57,7 +114,7 @@ mon_allocpage(int argc, char **argv, Trapframe *tf)
 }
 
 int
-mon_freepage(int argc, char **argv, Trapframe *tf)
+mon_freepage(int argc, char **argv, struct Trapframe *tf)
 {
 	physaddr_t phy;
 
@@ -70,7 +127,7 @@ mon_freepage(int argc, char **argv, Trapframe *tf)
 }
 
 int
-mon_pagestatus(int argc, char **argv, Trapframe *tf)
+mon_pagestatus(int argc, char **argv, struct Trapframe *tf)
 {
 	physaddr_t phy;
 
@@ -89,7 +146,7 @@ mon_pagestatus(int argc, char **argv, Trapframe *tf)
 }
 
 int
-mon_showcontents(int argc, char **argv, Trapframe *tf)
+mon_showcontents(int argc, char **argv, struct Trapframe *tf)
 {
 	pde_t *pgdir = boot_pgdir;
 	pte_t *pt_entry;
@@ -215,83 +272,6 @@ mon_showmappings(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
-
-int
-mon_help(int argc, char **argv, struct Trapframe *tf)
-{
-	int i;
-
-	for (i = 0; i < NCOMMANDS; i++)
-		cprintf("%s - %s\n", commands[i].name, commands[i].desc);
-	return 0;
-}
-
-int
-mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
-{
-	extern char _start[], etext[], edata[], end[];
-
-	cprintf("Special kernel symbols:\n");
-	cprintf("  _start %08x (virt)  %08x (phys)\n", _start, _start - KERNBASE);
-	cprintf("  etext  %08x (virt)  %08x (phys)\n", etext, etext - KERNBASE);
-	cprintf("  edata  %08x (virt)  %08x (phys)\n", edata, edata - KERNBASE);
-	cprintf("  end    %08x (virt)  %08x (phys)\n", end, end - KERNBASE);
-	cprintf("Kernel executable memory footprint: %dKB\n",
-		(end-_start+1023)/1024);
-	return 0;
-}
-
-int
-mon_backtrace(int argc, char **argv, struct Trapframe *tf)
-{
-	// Your code here.
-	struct Eipdebuginfo eip_info;
-#if defined(USING_RECORDED_FRAME)
-	// Print out the stack using recorded frame list
-	int i = 0, j = 0;
-	uint32_t ebp;
-
-	ebp = read_ebp();
-	cprintf("ebp %08x  eip %08x  args ", ebp, read_ret_eip(ebp)); 
-	for(i = 1; i <= ARG_NUM; i ++) {
-		cprintf("%08x ", read_arg(i, ebp));
-	}
-	cprintf("\n");
-
-	for(i = 0; i < argc; i++) {
-		cprintf("ebp %08x  eip %08x  args ", tf[i].ebp, tf[i].eip); 
-		for(j = 0; j < ARG_NUM; j ++) {
-			cprintf("%08x ", tf[i].args[j]);
-		}
-		cprintf("\n");
-	}
-#else 
-	// Trace the stack to its end
-	int i=0, j=0;
-	uint32_t ebp, eip;
-	char temp;
-
-	ebp = read_ebp();
-	
-	while (ebp != 0) {
-		eip = read_ret_eip(ebp);
-		cprintf("ebp %08x  eip %08x  args ", ebp, eip); 
-		for(i = 1; i <= ARG_NUM; i ++) {
-			cprintf("%08x ", read_arg(i, ebp));
-		}
-		cprintf("\n");
-
-		debuginfo_eip(eip, &eip_info);
-		cprintf("eip information : %s:%d: ", eip_info.eip_file, eip_info.eip_line);
-		for(j=0; j<eip_info.eip_fn_namelen; j++)
-			cprintf("%c", eip_info.eip_fn_name[j]);
-		cprintf("+%d\n", eip - eip_info.eip_fn_addr);
-		ebp = read_pre_ebp(ebp);
-	}
-#endif
-	return 0;
-}
-
 /***** Kernel monitor command interpreter *****/
 
 #define WHITESPACE "\t\r\n "
@@ -344,25 +324,14 @@ monitor(struct Trapframe *tf)
 	cprintf("Welcome to the JOS kernel monitor!\n");
 	cprintf("Type 'help' for a list of commands.\n");
 
+	if (tf != NULL)
+		print_trapframe(tf);
 
 	while (1) {
 		buf = readline("K> ");
 		if (buf != NULL)
 			if (runcmd(buf, tf) < 0)
 				break;
-	}
-}
-
-__inline void
-record_stack(struct Trapframe *tf)
-{
-	int i;
-
-	tf->ebp = read_ebp();
-	tf->eip = read_eip();
-	
-	for(i = 1; i <= ARG_NUM; i ++) {
-		tf->args[i-1] = read_arg(i, tf->ebp);
 	}
 }
 
