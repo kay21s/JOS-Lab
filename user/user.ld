@@ -67,6 +67,6 @@ SECTIONS
 	}
 
 	/DISCARD/ : {
-		*(.eh_frame .note.GNU-stack .comment)
+		*(.eh_frame .note.GNU-stack)
 	}
 }
