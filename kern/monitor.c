@@ -14,6 +14,7 @@
 #include <kern/kdebug.h>
 #include <kern/trap.h>
 #include <kern/pmap.h>
+#include <kern/env.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 //#define USING_RECORDED_FRAME 1
@@ -37,10 +38,32 @@ static struct Command commands[] = {
 	{ "alloc_page", "Alloc a page", mon_allocpage},
 	{ "free_page", "Free a page of a given address", mon_freepage},
 	{ "page_status", "Show if a page is freed or allocated", mon_pagestatus},
+	{ "continue", "Continue to execute", debug_continue},
+	{ "si", "Signle step execution", debug_si},
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
 unsigned read_eip();
+
+/***** Implementations of debug kernel monitor commands *****/
+int
+debug_continue(int argc, char **argv, struct Trapframe *tf)
+{
+	tf->tf_eflags |= FL_RF;
+	tf->tf_eflags &= ~FL_TF;
+	env_run(curenv);
+	return 0;
+}
+
+int
+debug_si(int argc, char **argv, struct Trapframe *tf)
+{
+	tf->tf_eflags |= FL_TF;
+	tf->tf_eflags &= ~FL_RF;
+	env_run(curenv);
+	return 0;
+}
+
 
 /***** Implementations of basic kernel monitor commands *****/
 
@@ -136,7 +159,7 @@ mon_pagestatus(int argc, char **argv, struct Trapframe *tf)
 
 	phy = atoi(argv[1]);
 	cprintf("phy : 0x%x is ", phy);
-	
+
 	if (1 == page_status(pa2page(phy)))
 		cprintf("free\n");
 	else

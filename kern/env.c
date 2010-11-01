@@ -72,6 +72,15 @@ void
 env_init(void)
 {
 	// LAB 3: Your code here.
+	int i = 0;
+
+	LIST_INIT(&env_free_list);
+	for (i=NENV-1; i>=0; i--) {
+		envs[i].env_id = 0;
+		envs[i].env_runs = 0;
+		envs[i].env_status = ENV_FREE;
+		LIST_INSERT_HEAD(&env_free_list, &envs[i], env_link);
+	}
 }
 
 //
@@ -112,6 +121,21 @@ env_setup_vm(struct Env *e)
 	//	pp_ref for env_free to work correctly.
 
 	// LAB 3: Your code here.
+	memset(page2kva(p), 0, PGSIZE);
+	e->env_pgdir = page2kva(p);
+	e->env_cr3 = page2pa(p);
+	p->pp_ref ++;
+
+#if 0
+	boot_map_segment(e->env_pgdir, UPAGES, ROUNDUP(npage*sizeof(struct Page), PGSIZE), (physaddr_t)PADDR(pages), PTE_U);
+	boot_map_segment(e->env_pgdir, UENVS, ROUNDUP(NENV*sizeof(struct Env), PGSIZE), (physaddr_t)PADDR(envs), PTE_U);
+	boot_map_segment(e->env_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, (physaddr_t)PADDR(bootstack), PTE_W);
+	boot_map_segment(e->env_pgdir, KSTACKTOP-PTSIZE, PTSIZE-KSTKSIZE, 0, 0);
+	boot_map_segment(e->env_pgdir, KERNBASE, 0xffffffff-KERNBASE+1, 0, PTE_W);
+#else
+	for (i=PDX(UTOP); i<NPDENTRIES; i++)
+		e->env_pgdir[i] = boot_pgdir[i];
+#endif
 
 	// VPT and UVPT map the env's own page table, with
 	// different permissions.
@@ -196,6 +220,16 @@ segment_alloc(struct Env *e, void *va, size_t len)
 	// Hint: It is easier to use segment_alloc if the caller can pass
 	//   'va' and 'len' values that are not page-aligned.
 	//   You should round va down, and round len up.
+	void *aligned_va = ROUNDDOWN(va, PGSIZE);
+	size_t i, aligned_len = ROUNDUP(len, PGSIZE);
+	struct Page *page;
+	
+	for (i=0; i<aligned_len; i+=PGSIZE) {
+		if (-E_NO_MEM == page_alloc(&page)) {
+			panic("No memory\n");
+		}
+		page_insert(e->env_pgdir, page, aligned_va+i, PTE_U | PTE_W);
+	}
 }
 
 //
@@ -253,11 +287,95 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 	//  What?  (See env_run() and env_pop_tf() below.)
 
 	// LAB 3: Your code here.
+	struct Proghdr *ph, *eph;
+	struct Elf *elfhdr = (struct Elf *)binary;
+	struct Page *page;
+	int copy_size, copy_count;
+	uintptr_t page_offset; 
+	void *copy_to, *copy_from;
+
+	// is this a valid ELF?
+	if (elfhdr->e_magic != ELF_MAGIC)
+		panic("Bad ELF Format in kern/env.c/load_icode()!\n");
+
+	// load each program segment (ignores ph flags)
+	ph = (struct Proghdr *) ((uint8_t *) elfhdr + elfhdr->e_phoff);
+	eph = ph + elfhdr->e_phnum;
+	for (; ph < eph; ph ++) {
+		if (ph->p_type == ELF_PROG_LOAD) {
+			// allocate memory in the Env's page table
+			// FIXME:jump the first page -- the first segment is loaded into 0x24
+			if(ph->p_va<1024) continue;
+			segment_alloc(e, (void *)ph->p_va, ph->p_memsz);
+
+			// copy binary+ph->offset, length: ph->p_filesz to ph->p_va in the Env's page table
+			void *copy_ptr = binary + ph->p_offset;
+
+			for (copy_count = 0; copy_count < ph->p_filesz; ) {
+				if (NULL == (page = page_lookup(e->env_pgdir, (void *)(ph->p_va + copy_count), NULL))) {
+					panic("Page cannot be find\n");
+				}
+
+				// calculate copy_size and copy_to according to start add.
+				// the first time the p_va maybe not at the beginning of a page
+				// if p_va+copy_count is at the beginning of a page, copy_size is PGSIZE
+				page_offset = PGOFF(ph->p_va + copy_count);
+				copy_size = PGSIZE - page_offset;
+
+				// fix copy_size and copy_to according to end add.
+				// if the end is within this page
+				if (copy_count + copy_size > ph->p_filesz) {
+					copy_size = ph->p_filesz - copy_count;
+				}
+
+				copy_from = copy_ptr + copy_count;
+				copy_to = page2kva(page) + page_offset;
+
+				memmove(copy_to, copy_from, copy_size);
+
+				copy_count += copy_size;
+			}
+
+			if (copy_count != ph->p_filesz) 
+				panic("Unequal of copy_count and ph->p_filesz\n");
+			// set p_filesz to p_memsz zero
+			for ( ; copy_count < ph->p_memsz; ) {
+				if (NULL == (page = page_lookup(e->env_pgdir, (void *)(ph->p_va + copy_count), NULL))) {
+					panic("Page cannot be find\n");
+				}
+
+				// calculate copy_size and copy_to according to start add.
+				// the first time the p_va maybe not at the beginning of a page
+				// if p_va+copy_count is at the beginning of a page, copy_size is PGSIZE
+				page_offset = PGOFF(ph->p_va + copy_count);
+				copy_size = PGSIZE - page_offset;
+
+				// fix copy_size and copy_to according to end add.
+				// if the end is within this page
+				if (copy_count + copy_size > ph->p_memsz) {
+					copy_size = ph->p_memsz - copy_count;
+				}
+
+				copy_to = page2kva(page) + page_offset;
+
+				memset(copy_to, 0, copy_size);
+
+				copy_count += copy_size;
+			}
+
+			if (copy_count != ph->p_memsz) 
+				panic("Unequal of copy_count and ph->p_filesz\n");
+		}
+	}
 
 	// Now map one page for the program's initial stack
 	// at virtual address USTACKTOP - PGSIZE.
 
 	// LAB 3: Your code here.
+	segment_alloc(e, (uintptr_t *)(USTACKTOP - PGSIZE), PGSIZE);
+
+	// Set the program's entry point e->env_tf.tf_eip
+	e->env_tf.tf_eip = elfhdr->e_entry;
 }
 
 //
@@ -274,6 +392,23 @@ void
 env_create(uint8_t *binary, size_t size)
 {
 	// LAB 3: Your code here.
+	struct Env *env;
+	switch(env_alloc(&env, 0))
+	{
+		case -E_NO_FREE_ENV:
+			cprintf("All NENVS environments are allocated\n");
+			return;
+		case -E_NO_MEM:
+			cprintf("No memory\n");
+			return;
+		default:
+			break;
+	}
+
+	env->env_status = ENV_RUNNABLE;
+	if (env!=envs)
+		panic("env!=envs\n");
+	load_icode(env, binary, size);
 }
 
 //
@@ -347,6 +482,7 @@ env_destroy(struct Env *e)
 // Restores the register values in the Trapframe with the 'iret' instruction.
 // This exits the kernel and starts executing some environment's code.
 // This function does not return.
+// popal -- pop eax,ebx,ecx,edx,esp,ebp,esi,edi
 //
 void
 env_pop_tf(struct Trapframe *tf)
@@ -384,6 +520,12 @@ env_run(struct Env *e)
 	
 	// LAB 3: Your code here.
 
-	panic("env_run not yet implemented");
+	//asm volatile("int3");
+	if (e->env_status != ENV_RUNNABLE)
+		panic("not runable\n");
+	curenv = e;
+	e->env_runs ++;
+	lcr3(e->env_cr3);
+	env_pop_tf(&(e->env_tf));
 }
 

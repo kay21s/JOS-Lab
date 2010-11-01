@@ -21,5 +21,7 @@ int mon_showcontents(int argc, char **argv, struct Trapframe *tf);
 int mon_allocpage(int argc, char **argv, struct Trapframe *tf);
 int mon_freepage(int argc, char **argv, struct Trapframe *tf);
 int mon_pagestatus(int argc, char **argv, struct Trapframe *tf);
+int debug_continue(int argc, char **argv, struct Trapframe *tf);
+int debug_si(int argc, char **argv, struct Trapframe *tf);
 
 #endif	// !JOS_KERN_MONITOR_H

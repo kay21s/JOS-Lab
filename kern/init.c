@@ -45,9 +45,9 @@ i386_init(void)
 	// Can't call cprintf until after we do this!
 	cons_init();
 
+#if defined(LAB1_ONLY)
 	cprintf("6828 decimal is %o octal!\n", 6828);
 
-#if defined(LAB1_ONLY)
 	/* ----- Exercise 8 of Lab 1 -----*/
 	int x=1,y=3,z=4;
 	cprintf("x %d, y %x, z %d\n", x, y, z);
@@ -82,7 +82,7 @@ i386_init(void)
 	ENV_CREATE2(TEST, TESTSIZE);
 #else
 	// Touch all you want.
-	ENV_CREATE(user_hello);
+	ENV_CREATE(user_breakpoint);
 #endif // TEST*
  
  

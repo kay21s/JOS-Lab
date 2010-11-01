@@ -30,6 +30,8 @@
 #define T_DEFAULT   500		// catchall
 
 // Hardware IRQ numbers. We receive these as (IRQ_OFFSET+IRQ_WHATEVER)
+#define IRQ_OFFSET	32
+
 #define IRQ_TIMER        0
 #define IRQ_KBD          1
 #define IRQ_SPURIOUS     7

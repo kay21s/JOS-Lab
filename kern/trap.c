@@ -9,6 +9,7 @@
 #include <kern/env.h>
 #include <kern/syscall.h>
 
+extern int vectors[];	// in trapentry.S: array of 256 entry pointers
 static struct Taskstate ts;
 
 /* Interrupt descriptor table.  (Must be built at run time because
@@ -59,6 +60,14 @@ idt_init(void)
 	extern struct Segdesc gdt[];
 	
 	// LAB 3: Your code here.
+	int i;
+
+	for (i = 0; i < 256; i++)
+		SETGATE(idt[i], 0, GD_KT, vectors[i], 0)
+	SETGATE(idt[T_SYSCALL], 1, GD_KT, vectors[T_SYSCALL], 3)
+	SETGATE(idt[T_BRKPT], 0, GD_KT, vectors[T_BRKPT], 3)
+	SETGATE(idt[T_OFLOW], 0, GD_KT, vectors[T_OFLOW], 3);
+	SETGATE(idt[T_BOUND], 0, GD_KT, vectors[T_BOUND], 3);
 
 	// Setup a TSS so that we get the right stack
 	// when we trap to the kernel.
@@ -111,7 +120,24 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
-	
+	struct PushRegs *regs;	
+	switch (tf->tf_trapno) {
+	case T_SYSCALL:
+		regs = &(tf->tf_regs);
+		regs->reg_eax = syscall(regs->reg_eax, regs->reg_edx, 
+			regs->reg_ecx, regs->reg_ebx, regs->reg_edi, regs->reg_esi);
+		return;
+	case T_PGFLT:
+		page_fault_handler(tf);
+		return;
+	case T_BRKPT:
+		monitor(tf);
+		return;
+	case T_DEBUG:
+		cprintf("-----\n");
+		monitor(tf);
+		return;
+	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -159,6 +185,8 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 	
 	// LAB 3: Your code here.
+	if ((tf->tf_cs & 0x3) == 0)
+		panic("Page fault in kernel\n");
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
