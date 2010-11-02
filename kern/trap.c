@@ -139,7 +139,6 @@ trap_dispatch(struct Trapframe *tf)
 		monitor(tf);
 		return;
 	case T_DEBUG:
-		cprintf("-----\n");
 		monitor(tf);
 		return;
 	}

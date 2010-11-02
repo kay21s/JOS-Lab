@@ -527,7 +527,6 @@ env_run(struct Env *e)
 	
 	// LAB 3: Your code here.
 
-	//asm volatile("int3");
 	if (e->env_status != ENV_RUNNABLE)
 		panic("not runable\n");
 	curenv = e;
