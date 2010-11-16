@@ -20,10 +20,8 @@ __inline void record_stack(struct Trapframe *) __attribute__((always_inline));
 void
 test_backtrace(int x)
 {
-	static int count = 0;
 	int i;
 
-	count ++;
 	cprintf("entering test_backtrace %d\n", x);
 	if (x > 0) {
 		test_backtrace(x-1);

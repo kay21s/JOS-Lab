@@ -217,7 +217,7 @@ i386_vm_init(void)
 	//      (ie. perm = PTE_U | PTE_P)
 	//    - pages itself -- kernel RW, user NONE
 	// Your code goes here:
-	boot_map_segment(pgdir, UPAGES, ROUNDUP(npage*sizeof(struct Page), PGSIZE), (physaddr_t)PADDR(pages), PTE_U | PTE_W);
+	boot_map_segment(pgdir, UPAGES, ROUNDUP(npage*sizeof(struct Page), PGSIZE), (physaddr_t)PADDR(pages), PTE_U | PTE_P);
 
 	//////////////////////////////////////////////////////////////////////
 	// Map the 'envs' array read-only by the user at linear address UENVS
@@ -226,7 +226,7 @@ i386_vm_init(void)
 	//    - the new image at UENVS  -- kernel R, user R
 	//    - envs itself -- kernel RW, user NONE
 	// LAB 3: Your code here.
-	boot_map_segment(pgdir, UENVS, ROUNDUP(NENV*sizeof(struct Env), PGSIZE), (physaddr_t)PADDR(envs), PTE_U | PTE_W);
+	boot_map_segment(pgdir, UENVS, ROUNDUP(NENV*sizeof(struct Env), PGSIZE), (physaddr_t)PADDR(envs), PTE_U | PTE_P);
 
 	//////////////////////////////////////////////////////////////////////
         // Use the physical memory that bootstack refers to as
@@ -669,24 +669,22 @@ int
 page_insert(pde_t *pgdir, struct Page *pp, void *va, int perm) 
 {
 	// Fill this function in
-	pte_t *page_table_entry;
+	pte_t *pte;
 
-	page_table_entry = pgdir_walk(pgdir, va, 1);
-	if (page_table_entry == NULL) {
+	pte = pgdir_walk(pgdir, va, 1);
+	if (pte == NULL) {
 		return -E_NO_MEM;
 	}
 
-	if (((*page_table_entry) & PTE_P) != 0) {
-		if(PTE_ADDR(*page_table_entry) == page2pa(pp)) {
-			*page_table_entry |= perm;
-			pgdir[PDX(va)] |= perm;
-			return 0;
-		}
+	// Increase first to avoid the page is removed to the free list
+	pp->pp_ref ++;
+
+	if (((*pte) & PTE_P) != 0) {
 		page_remove(pgdir, va);
 	}
 
-	*page_table_entry = page2pa(pp) | perm | PTE_P;
-	pp->pp_ref ++;
+	*pte = page2pa(pp) | perm | PTE_P;
+	pgdir[PDX(va)] |= perm;
 	tlb_invalidate(pgdir, va);
 	return 0;
 }
@@ -824,8 +822,12 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 		return -E_FAULT;
 	}
 
-	for ( ; check_va <= end_va; check_va += PGSIZE) {
+	for ( ; check_va < end_va; check_va += PGSIZE) {
 		pte = pgdir_walk(env->env_pgdir, (void *)check_va, 0);
+		if (pte == NULL) {
+			user_mem_check_addr = check_va;
+			return -E_FAULT;
+		}
 		if ((*pte & (perm | PTE_U)) != (perm | PTE_U)) {
 			user_mem_check_addr = check_va;
 			return -E_FAULT;

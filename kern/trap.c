@@ -131,6 +131,7 @@ trap_dispatch(struct Trapframe *tf)
 		regs = &(tf->tf_regs);
 		regs->reg_eax = syscall(regs->reg_eax, regs->reg_edx, 
 			regs->reg_ecx, regs->reg_ebx, regs->reg_edi, regs->reg_esi);
+		if (regs->reg_eax < 0)	panic("syscall returns negative");
 		return;
 	case T_PGFLT:
 		page_fault_handler(tf);
@@ -238,6 +239,39 @@ page_fault_handler(struct Trapframe *tf)
 
 	// LAB 4: Your code here.
 
+	struct UTrapframe *uxstk_p;
+
+	if (curenv->env_pgfault_upcall == NULL)
+		goto destroy_env;
+
+	// check if the pgfault_handler is OK
+	user_mem_assert(curenv, ROUNDDOWN(curenv->env_pgfault_upcall, PGSIZE), PGSIZE, PTE_P);
+
+
+	if ((tf->tf_esp >= UXSTACKTOP - PGSIZE) && (tf->tf_esp <= UXSTACKTOP - 1)) {
+		// nested page fault in the user exception stack
+		uxstk_p = (struct UTrapframe *)(tf->tf_esp - sizeof(uint32_t) - sizeof(struct UTrapframe));
+	} else {
+		uxstk_p = (struct UTrapframe *)(UXSTACKTOP - sizeof(struct UTrapframe));
+	}
+
+	// check if the exception stack can be used, not overflow
+	user_mem_assert(curenv, (void *)uxstk_p, sizeof(struct UTrapframe), PTE_P | PTE_W);
+
+	uxstk_p->utf_fault_va = fault_va;
+	uxstk_p->utf_err = tf->tf_err;
+	uxstk_p->utf_regs = tf->tf_regs;
+	uxstk_p->utf_eip = tf->tf_eip;
+	uxstk_p->utf_eflags = tf->tf_eflags;
+	uxstk_p->utf_esp = tf->tf_esp;
+
+	if (curenv->env_pgfault_upcall != NULL) {
+		curenv->env_tf.tf_esp = (uint32_t)uxstk_p;
+		curenv->env_tf.tf_eip = (uint32_t)curenv->env_pgfault_upcall;
+		env_run(curenv);
+	}
+
+destroy_env:
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",
 		curenv->env_id, fault_va, tf->tf_eip);

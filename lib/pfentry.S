@@ -65,15 +65,28 @@ _pgfault_upcall:
 	//
 	// LAB 4: Your code here.
 
+	movl %esp, %eax			// store the esp
+	movl 48(%esp), %ebx		// get the trap-time esp
+	movl 40(%esp), %ecx		// get the trap-time eip
+	movl %ebx, %esp			// now points to the trap-time stack
+	pushl %ecx			// push eip into the stack
+	movl %eax, %esp			// restore esp
+	addl $8, %esp			// ignore the err code and va
+
 	// Restore the trap-time registers.
 	// LAB 4: Your code here.
+	popal
 
 	// Restore eflags from the stack.
 	// LAB 4: Your code here.
+	addl $4, %esp			// the trap-time eip
+	popfl
 
 	// Switch back to the adjusted trap-time stack.
 	// LAB 4: Your code here.
+	popl %esp			// the trap-time stack
+	subl $4, %esp			// goto the pushed eip
 
 	// Return to re-execute the instruction that faulted.
 	// LAB 4: Your code here.
-
+	ret

@@ -22,7 +22,7 @@ sys_cputs(const char *s, size_t len)
 	// Destroy the environment if not.
 	
 	// LAB 3: Your code here.
-	user_mem_assert(curenv, s, len, PTE_U);
+	user_mem_assert(curenv, s, len, PTE_P);
 
 	// Print the string supplied by the user.
 	cprintf("%.*s", len, s);
@@ -174,7 +174,15 @@ static int
 sys_env_set_pgfault_upcall(envid_t envid, void *func)
 {
 	// LAB 4: Your code here.
-	panic("sys_env_set_pgfault_upcall not implemented");
+	struct Env *env;
+	int err;
+
+	err = envid2env(envid, &env, 1);
+	if (err == -E_BAD_ENV)
+		return -E_BAD_ENV;
+
+	env->env_pgfault_upcall = func;
+	return 0;
 }
 
 // Allocate a page of memory and map it at 'va' with permission
@@ -225,6 +233,13 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 		page_free(pp);
 		return -E_NO_MEM;
 	}
+	// FIXME: why memset va won't work? the kernel cannot use the user part pgdir?
+	//cprintf("kva = %x, va = %x\n", page2kva(pp), va);
+	//pte_t *kva_t = pgdir_walk(env->env_pgdir, page2kva(pp), 0);
+	//pte_t *va_t = pgdir_walk(env->env_pgdir, va, 0);
+	//cprintf("pte: kva= %x(%x), va = %x(%x)\n", PTE_ADDR(*kva_t), *kva_t, PTE_ADDR(*va_t), *va_t);
+	//memset(va, 0, PGSIZE);
+	memset(page2kva(pp), 0, PGSIZE);
 	return 0;
 }
 
@@ -277,6 +292,8 @@ sys_page_map(envid_t srcenvid, void *srcva,
 		return -E_INVAL;
 
 	pp = page_lookup(srcenv->env_pgdir, srcva, &pte);
+	if (pp == NULL)
+		return -E_INVAL;
 	if (((*pte & PTE_W) == 0) && (perm & PTE_W))
 		return -E_INVAL;
 
@@ -418,6 +435,9 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		break;
 	case SYS_page_unmap:
 		ret = sys_page_unmap((envid_t)a1, (void *)a2);
+		break;
+	case SYS_env_set_pgfault_upcall:
+		sys_env_set_pgfault_upcall((envid_t)a1, (void *)a2);
 		break;
 	default:
 		return -E_INVAL;
