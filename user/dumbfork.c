@@ -14,6 +14,7 @@ umain(void)
 
 	// fork a child process
 	who = dumbfork();
+	cprintf("1\n");
 
 	// print a message and yield to the other a few times
 	for (i = 0; i < (who ? 10 : 20); i++) {
@@ -54,6 +55,7 @@ dumbfork(void)
 	if (envid < 0)
 		panic("sys_exofork: %e", envid);
 	if (envid == 0) {
+		cprintf("3\n");
 		// We're the child.
 		// The copied value of the global variable 'env'
 		// is no longer valid (it refers to the parent!).
@@ -65,11 +67,13 @@ dumbfork(void)
 	// We're the parent.
 	// Eagerly copy our entire address space into the child.
 	// This is NOT what you should do in your fork implementation.
-	for (addr = (uint8_t*) UTEXT; addr < end; addr += PGSIZE)
+	for (addr = (uint8_t*) UTEXT; addr < end; addr += PGSIZE) {
 		duppage(envid, addr);
+	}
 
 	// Also copy the stack we are currently running on.
 	duppage(envid, ROUNDDOWN(&addr, PGSIZE));
+		cprintf("4\n");
 
 	// Start the child environment running
 	if ((r = sys_env_set_status(envid, ENV_RUNNABLE)) < 0)

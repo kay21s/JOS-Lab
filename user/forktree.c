@@ -34,5 +34,10 @@ void
 umain(void)
 {
 	forktree("");
+	//int i=5;
+	//if(fork() == 0)
+	//	cprintf("child! %d\n", i);
+	//else
+	//	cprintf("parent! %d\n", i);
 }
 
