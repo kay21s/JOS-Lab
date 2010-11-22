@@ -61,8 +61,10 @@ sys_env_destroy(envid_t envid)
 	int r;
 	struct Env *e;
 
-	if ((r = envid2env(envid, &e, 1)) < 0)
+	if ((r = envid2env(envid, &e, 1)) == -E_BAD_ENV) {
+		panic("Error in env_destroy");
 		return r;
+	}
 	if (e == curenv)
 		cprintf("[%08x] exiting gracefully\n", curenv->env_id);
 	else
@@ -372,7 +374,39 @@ static int
 sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_try_send not implemented");
+	struct Env *env;
+	int err, ret = 0;
+
+	err = envid2env(envid, &env, 0);
+	if (err == -E_BAD_ENV)
+		return -E_BAD_ENV;
+	if (env->env_ipc_recving == 0)
+		return -E_IPC_NOT_RECV;
+
+	env->env_ipc_perm = 0;
+
+	if ((uint32_t)srcva < UTOP && (uint32_t)env->env_ipc_dstva < UTOP) {
+		if (((perm & (~PTE_USER)) != 0) || ((perm & (PTE_U | PTE_P)) != (PTE_U | PTE_P)))
+			return -E_INVAL;
+		pte_t *pte = pgdir_walk(curenv->env_pgdir, srcva, 0);
+		if (pte == NULL)
+			return -E_INVAL;
+		if ((perm & PTE_W) && !(*pte & PTE_W))
+			return -E_INVAL;
+		// FIXME:how to handle the not enough memory issue?
+
+		env->env_ipc_perm = perm;
+
+		sys_page_unmap(envid, env->env_ipc_dstva);
+		sys_page_map(curenv->env_id, srcva, envid, env->env_ipc_dstva, perm);
+		ret = 1;
+	}
+
+	env->env_ipc_recving = 0;
+	env->env_ipc_from = curenv->env_id;
+	env->env_ipc_value = value;
+	env->env_status = ENV_RUNNABLE;
+	return ret;
 }
 
 // Block until a value is ready.  Record that you want to receive
@@ -390,7 +424,18 @@ static int
 sys_ipc_recv(void *dstva)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_recv not implemented");
+	if (((uint32_t)dstva < UTOP) && (dstva != ROUNDDOWN(dstva, PGSIZE)))
+		return -E_INVAL;
+
+	curenv->env_ipc_recving = 1;
+	curenv->env_ipc_dstva = dstva;
+	curenv->env_status = ENV_NOT_RUNNABLE;
+
+	/* sched_yield(); cannot be used here! trap() will call sched_yield at the end.
+	   if it is called here, the process will run in the user code with old eip
+	   but not continue running from here! what's more, the return value is not set.
+	*/
+
 	return 0;
 }
 
@@ -437,7 +482,13 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		ret = sys_page_unmap((envid_t)a1, (void *)a2);
 		break;
 	case SYS_env_set_pgfault_upcall:
-		sys_env_set_pgfault_upcall((envid_t)a1, (void *)a2);
+		ret = sys_env_set_pgfault_upcall((envid_t)a1, (void *)a2);
+		break;
+	case SYS_ipc_recv:
+		ret = sys_ipc_recv((void *)a1);
+		break;
+	case SYS_ipc_try_send:
+		ret = sys_ipc_try_send((envid_t)a1, (uint32_t)a2, (void *)a3, (unsigned)a4);
 		break;
 	default:
 		return -E_INVAL;

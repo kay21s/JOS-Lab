@@ -69,7 +69,15 @@ idt_init(void)
 
 	for (i = 0; i < 256; i++)
 		SETGATE(idt[i], 0, GD_KT, vectors[i], 0)
-	SETGATE(idt[T_SYSCALL], 1, GD_KT, vectors[T_SYSCALL], 3)
+	
+	// Difference between interrupt gate and trap gate:
+	// After transfering the control, an interrupt gate clears IF to disable interrupts
+	// however, trap gate does not change the IF flag
+	// There will be errors in handling interrput when what's currently running is an exception
+	// JOS only allows interrupt happens in user space, and forbid it inkernel space, when a
+	// timer interrupt arrives, it will run sched_yield and eax is currently the syscall number
+	// which is >0, so user panic at lib/syscall.c
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, vectors[T_SYSCALL], 3)
 	SETGATE(idt[T_BRKPT], 0, GD_KT, vectors[T_BRKPT], 3)
 	SETGATE(idt[T_OFLOW], 0, GD_KT, vectors[T_OFLOW], 3);
 	SETGATE(idt[T_BOUND], 0, GD_KT, vectors[T_BOUND], 3);
@@ -131,7 +139,6 @@ trap_dispatch(struct Trapframe *tf)
 		regs = &(tf->tf_regs);
 		regs->reg_eax = syscall(regs->reg_eax, regs->reg_edx, 
 			regs->reg_ecx, regs->reg_ebx, regs->reg_edi, regs->reg_esi);
-		if (regs->reg_eax < 0)	panic("syscall returns negative");
 		return;
 	case T_PGFLT:
 		page_fault_handler(tf);
@@ -142,12 +149,12 @@ trap_dispatch(struct Trapframe *tf)
 	case T_DEBUG:
 		monitor(tf);
 		return;
-	}
-
 	// Handle clock interrupts.
 	// LAB 4: Your code here.
-
-
+	case IRQ_OFFSET + IRQ_TIMER:
+		sched_yield();
+		return;
+	}
 
 	// Handle spurious interupts
 	// The hardware sometimes raises these because of noise on the
@@ -171,6 +178,11 @@ trap_dispatch(struct Trapframe *tf)
 void
 trap(struct Trapframe *tf)
 {
+	// FIXME: Interrupt is enabled in the kernel but we cannot be interrupted
+	// if (tf->tf_eflags & FL_IF) cprintf("Enter trap, user is interruptable\n");
+	// if(curenv->env_tf.tf_eflags & FL_IF) cprintf("Current process is interruptable\n");
+	// while (1);
+
 	if ((tf->tf_cs & 3) == 3) {
 		// Trapped from user mode.
 		// Copy trap frame (which is currently on the stack)
