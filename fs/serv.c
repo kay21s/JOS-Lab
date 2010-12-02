@@ -196,6 +196,7 @@ serve_map(envid_t envid, struct Fsreq_map *rq)
 	char *blk;
 	struct OpenFile *o;
 	int perm;
+	uint32_t filebno;
 
 	if (debug)
 		cprintf("serve_map %08x %08x %08x\n", envid, rq->req_fileid, rq->req_offset);
@@ -206,7 +207,22 @@ serve_map(envid_t envid, struct Fsreq_map *rq)
 	// (see the O_ flags in inc/lib.h).
 	
 	// LAB 5: Your code here.
-	panic("serve_map not implemented");
+	if ((r = openfile_lookup(envid, rq->req_fileid, &o)) < 0)
+		goto out;
+	
+	filebno = rq->req_offset / BLKSIZE;
+	if ((r = file_get_block(o->o_file, filebno, &blk)) < 0)
+		goto out;
+
+	if ((O_ACCMODE & o->o_mode) == O_RDONLY)
+		perm = PTE_U | PTE_P;
+	else
+		perm = PTE_U | PTE_P | PTE_W;
+
+	ipc_send(envid, r, blk, perm);
+	return;
+out:
+	ipc_send(envid, r, 0, 0);
 }
 
 void
@@ -262,7 +278,13 @@ serve_dirty(envid_t envid, struct Fsreq_dirty *rq)
 	// Returns 0 on success, < 0 on error.
 	
 	// LAB 5: Your code here.
-	panic("serve_dirty not implemented");
+	if ((r = openfile_lookup(envid, rq->req_fileid, &o)) < 0)
+		goto out;
+
+	if ((r = file_dirty(o->o_file, rq->req_offset)) < 0)
+		goto out;
+out:
+	ipc_send(envid, r, 0, 0);
 }
 
 void

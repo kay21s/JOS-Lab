@@ -79,6 +79,7 @@ i386_init(void)
 
 	// Start fs
 	ENV_CREATE(fs_fs);
+	ENV_CREATE(user_icode);
 
 	// Start init
 #if defined(TEST)

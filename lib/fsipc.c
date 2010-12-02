@@ -52,8 +52,14 @@ int
 fsipc_map(int fileid, off_t offset, void *dstva)
 {
 	// LAB 5: Your code here.
-	panic("fsipc_map not implemented");
-	return -E_UNSPECIFIED;
+	int perm;
+	struct Fsreq_map *req;
+
+	req = (struct Fsreq_map*) fsipcbuf;
+	req->req_fileid = fileid;
+	req->req_offset = offset;
+	int r= fsipc(FSREQ_MAP, req, dstva, &perm);
+	return r;
 }
 
 // Make a set-file-size request to the file server.
@@ -85,8 +91,12 @@ int
 fsipc_dirty(int fileid, off_t offset)
 {
 	// LAB 5: Your code here.
-	panic("fsipc_dirty not implemented");
-	return -E_UNSPECIFIED;
+	struct Fsreq_dirty *req;
+
+	req = (struct Fsreq_dirty*) fsipcbuf;
+	req->req_fileid = fileid;
+	req->req_offset = offset;
+	return fsipc(FSREQ_DIRTY, req, 0, 0);
 }
 
 // Ask the file server to delete a file, given its pathname.

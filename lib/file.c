@@ -41,7 +41,25 @@ open(const char *path, int mode)
 	// If any step fails, use fd_close to free the file descriptor.
 
 	// LAB 5: Your code here.
-	panic("open() unimplemented!");
+	int r;
+	struct Fd *fd;
+
+	if ((r = fd_alloc(&fd)) < 0)
+		return r;
+	if ((r = sys_page_alloc(0, fd, PTE_P | PTE_U | PTE_W)))
+		return r;
+	if ((r = fsipc_open(path, mode, fd)) < 0) {
+		if ((r = fd_close(fd, 1)) < 0)
+			return r;
+		return r;
+	}
+
+	if ((r = fmap(fd, 0, fd->fd_file.file.f_size)) < 0) {
+		if ((r = fd_close(fd, 1)) < 0)
+			return r;
+		return r;
+	}
+	return fd2num(fd);
 }
 
 // Clean up a file-server file descriptor.
@@ -54,7 +72,21 @@ file_close(struct Fd *fd)
 	// (to free up its resources).
 
 	// LAB 5: Your code here.
-	panic("close() unimplemented!");
+	int r;
+	uint32_t fileid;
+
+	if ((r = funmap(fd, fd->fd_file.file.f_size, 0, 1)) < 0) {
+		return r;
+	}
+	
+	fileid = fd->fd_file.id;
+	if ((r = fsipc_close(fileid)) < 0)
+		return r;
+
+	//if ((r = fd_close(fd, 1)) < 0)
+	//	return r;
+
+	return 0;
 }
 
 // Read 'n' bytes from 'fd' at the current seek position into 'buf'.
@@ -167,8 +199,29 @@ static int
 fmap(struct Fd* fd, off_t oldsize, off_t newsize)
 {
 	// LAB 5: Your code here.
-	panic("fmap not implemented");
-	return -E_UNSPECIFIED;
+	char *data;
+	off_t offset, u_off;
+	uint32_t fileid;
+	int r;
+
+	if (oldsize >= newsize)
+		return 0;
+
+	data = fd2data(fd);
+	fileid = fd->fd_file.id;
+
+	for (offset = ROUNDUP(oldsize, PGSIZE); offset < ROUNDUP(newsize, PGSIZE); offset += PGSIZE) {
+
+		if ((r = fsipc_map(fileid, offset, (void *)(data + offset))) < 0) {
+			// map fails, unmap the previously mapped pages
+			for (u_off = ROUNDUP(oldsize, PGSIZE); u_off < offset; u_off += PGSIZE) {
+				if ((r = sys_page_unmap(0, (void *)(data + u_off))) < 0)
+					return r;
+			}
+			return r;
+		}
+	}
+	return 0;
 }
 
 // Unmap any file pages that no longer represent valid file pages
@@ -183,8 +236,27 @@ static int
 funmap(struct Fd* fd, off_t oldsize, off_t newsize, bool dirty)
 {
 	// LAB 5: Your code here.
-	panic("funmap not implemented");
-	return -E_UNSPECIFIED;
+	char *data;
+	off_t offset, u_off;
+	uint32_t fileid;
+	int r;
+
+	if (newsize >= oldsize)
+		return 0;
+
+	data = fd2data(fd);
+	fileid = fd->fd_file.id;
+
+	for (offset = ROUNDUP(newsize, PGSIZE); offset < ROUNDUP(oldsize, PGSIZE); offset += PGSIZE) {
+
+		if (dirty && (vpt[VPN(data+offset)] & PTE_D)) {
+			if ((r = fsipc_dirty(fileid, (off_t)(data + offset))) < 0)
+				return r;
+		}
+		if ((r = sys_page_unmap(0, (void *)(data + offset))) < 0)
+			return r;
+	}
+	return 0;
 }
 
 // Delete a file

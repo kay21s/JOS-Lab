@@ -148,7 +148,7 @@ close(int fdnum)
 
 	if ((r = fd_lookup(fdnum, &fd)) < 0)
 		return r;
-	else
+	else 
 		return fd_close(fd, 1);
 }
 
