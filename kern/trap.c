@@ -11,6 +11,8 @@
 #include <kern/sched.h>
 #include <kern/kclock.h>
 #include <kern/picirq.h>
+#include <kern/time.h>
+#include <kern/e100.h>
 
 extern int vectors[];	// in trapentry.S: array of 256 entry pointers
 static struct Taskstate ts;
@@ -155,6 +157,9 @@ trap_dispatch(struct Trapframe *tf)
 		sched_yield();
 		return;
 	}
+
+	// Add time tick increment to clock interrupts.
+	// LAB 6: Your code here.
 
 	// Handle spurious interupts
 	// The hardware sometimes raises these because of noise on the
