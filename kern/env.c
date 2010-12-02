@@ -320,7 +320,6 @@ load_icode(struct Env *e, uint8_t *binary, size_t size)
 	for (; ph < eph; ph ++) {
 		if (ph->p_type == ELF_PROG_LOAD) {
 			// allocate memory in the Env's page table
-			// FIXME:jump the first page -- the first segment is loaded into 0x24
 			segment_alloc(e, (void *)ph->p_va, ph->p_memsz);
 
 			// copy binary+ph->offset, length: ph->p_filesz to ph->p_va in the Env's page table

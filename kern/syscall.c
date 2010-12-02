@@ -230,12 +230,11 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 		page_free(pp);
 		return -E_NO_MEM;
 	}
-	// FIXME: why memset va won't work? the kernel cannot use the user part pgdir?
-	//cprintf("kva = %x, va = %x\n", page2kva(pp), va);
-	//pte_t *kva_t = pgdir_walk(env->env_pgdir, page2kva(pp), 0);
-	//pte_t *va_t = pgdir_walk(env->env_pgdir, va, 0);
-	//cprintf("pte: kva= %x(%x), va = %x(%x)\n", PTE_ADDR(*kva_t), *kva_t, PTE_ADDR(*va_t), *va_t);
-	//memset(va, 0, PGSIZE);
+	/* memset(va, 0, PGSIZE) won't work. Kernel cannot use the user's pgdir,
+	   va is the virtual address of the page which is in the user's page table,
+	   When kernel want to memset the pp, it must use the page's kernel virtual
+	   address. Use va, the kernel will find the corresponding physical page 
+	   which will not be this page*/
 	memset(page2kva(pp), 0, PGSIZE);
 	return 0;
 }

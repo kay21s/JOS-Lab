@@ -178,11 +178,6 @@ trap_dispatch(struct Trapframe *tf)
 void
 trap(struct Trapframe *tf)
 {
-	// FIXME: Interrupt is enabled in the kernel but we cannot be interrupted
-	// if (tf->tf_eflags & FL_IF) cprintf("Enter trap, user is interruptable\n");
-	// if(curenv->env_tf.tf_eflags & FL_IF) cprintf("Current process is interruptable\n");
-	// while (1);
-
 	if ((tf->tf_cs & 3) == 3) {
 		// Trapped from user mode.
 		// Copy trap frame (which is currently on the stack)
@@ -258,7 +253,6 @@ page_fault_handler(struct Trapframe *tf)
 
 	// check if the pgfault_handler is OK
 	user_mem_assert(curenv, ROUNDDOWN(curenv->env_pgfault_upcall, PGSIZE), PGSIZE, PTE_P);
-
 
 	if ((tf->tf_esp >= UXSTACKTOP - PGSIZE) && (tf->tf_esp <= UXSTACKTOP - 1)) {
 		// nested page fault in the user exception stack
