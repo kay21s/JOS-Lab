@@ -123,3 +123,8 @@ sys_time_msec(void)
 	return (unsigned int) syscall(SYS_time_msec, 0, 0, 0, 0, 0, 0);
 }
 
+int
+sys_transmit_packet(void *pkt_data, uint32_t datalen)
+{
+	return syscall(SYS_transmit_packet, 1, (uint32_t)pkt_data, (uint32_t)datalen, 0, 0, 0);
+}

@@ -96,6 +96,7 @@ i386_init(void)
 	// Touch all you want.
 	// ENV_CREATE(user_echosrv);
 	// ENV_CREATE(user_httpd);
+	// ENV_CREATE(user_testtime);
 #endif // TEST*
  
 	// Schedule and run the first user environment!

@@ -7,7 +7,7 @@
 
 // Flag to do "lspci" at bootup
 static int pci_show_devs = 1;
-static int pci_show_addrs = 0;
+static int pci_show_addrs = 1;
 
 // PCI "configuration mechanism one"
 static uint32_t pci_conf1_addr_ioport = 0x0cf8;
@@ -28,6 +28,7 @@ struct pci_driver pci_attach_class[] = {
 };
 
 struct pci_driver pci_attach_vendor[] = {
+	{ 0x8086, 0x1209, &nic_e100_enable},
 	{ 0, 0, 0 },
 };
 

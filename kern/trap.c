@@ -151,15 +151,17 @@ trap_dispatch(struct Trapframe *tf)
 	case T_DEBUG:
 		monitor(tf);
 		return;
+
 	// Handle clock interrupts.
 	// LAB 4: Your code here.
 	case IRQ_OFFSET + IRQ_TIMER:
+	// Add time tick increment to clock interrupts.
+	// LAB 6: Your code here.
+		time_tick();
 		sched_yield();
 		return;
 	}
 
-	// Add time tick increment to clock interrupts.
-	// LAB 6: Your code here.
 
 	// Handle spurious interupts
 	// The hardware sometimes raises these because of noise on the

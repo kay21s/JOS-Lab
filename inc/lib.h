@@ -55,6 +55,7 @@ int	sys_page_unmap(envid_t env, void *pg);
 int	sys_ipc_try_send(envid_t to_env, uint32_t value, void *pg, int perm);
 int	sys_ipc_recv(void *rcv_pg);
 unsigned int sys_time_msec(void);
+int	sys_transmit_packet(void *pkt_data, uint32_t datalen);
 
 // This must be inlined.  Exercise for reader: why?
 static __inline envid_t sys_exofork(void) __attribute__((always_inline));
