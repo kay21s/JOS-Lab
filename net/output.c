@@ -1,5 +1,5 @@
 #include "ns.h"
-#include "inc/lib.h"
+#include <inc/lib.h>
 
 #define PKTMAP		0x10000000
 
@@ -15,14 +15,20 @@ output(envid_t ns_envid)
 	int perm;
 	struct jif_pkt *pkt;
 
+	cprintf("Hey, I am OUTPUT, %x\n", sys_getenvid());
+
 	while (1) {
 		perm = 0;
 		req = ipc_recv((int32_t *) &whom, (void *) PKTMAP, &perm);
 
 		// All requests must contain an argument page
 		if (!(perm & PTE_P)) {
-			cprintf("Invalid request from %08x: no argument page\n",
-				whom);
+			cprintf("OUTPUT: Page Not presented\n", whom);
+			continue; // just leave it hanging...
+		}
+		// Request must come from NS
+		if (whom != ns_envid) {
+			cprintf("OUTPUT: Invalid request from %08x\n", whom);
 			continue; // just leave it hanging...
 		}
 
@@ -32,7 +38,7 @@ output(envid_t ns_envid)
 			sys_transmit_packet((void *)pkt->jp_data, (uint32_t)pkt->jp_len);
 			break;
 		default:
-			cprintf("Invalid request code %d from %08x\n", whom, req);
+			cprintf("OUTPUT: Invalid request code %d from %08x\n", whom, req);
 		}
 
 		sys_page_unmap(0, (void*) PKTMAP);

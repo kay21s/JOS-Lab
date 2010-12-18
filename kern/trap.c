@@ -76,7 +76,7 @@ idt_init(void)
 	// After transfering the control, an interrupt gate clears IF to disable interrupts
 	// however, trap gate does not change the IF flag
 	// There will be errors in handling interrput when what's currently running is an exception
-	// JOS only allows interrupt happens in user space, and forbid it inkernel space, when a
+	// JOS only allows interrupt happens in user space, and forbid it in kernel space, when a
 	// timer interrupt arrives, it will run sched_yield and eax is currently the syscall number
 	// which is >0, so user panic at lib/syscall.c
 	SETGATE(idt[T_SYSCALL], 0, GD_KT, vectors[T_SYSCALL], 3)

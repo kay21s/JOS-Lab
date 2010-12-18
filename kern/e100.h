@@ -3,6 +3,8 @@
 
 #include <kern/pci.h>
 
+#define MAX_ETH_FRAME	1518
+
 struct cb {
 	volatile uint16_t status;
 	uint16_t cmd;
@@ -14,11 +16,30 @@ struct tcb {
 	uint32_t tbd_array_addr;
 	uint16_t tbd_byte_count;
 	uint16_t tbd_thrs;
-	uint8_t pkt_data[1518];
+	uint8_t pkt_data[MAX_ETH_FRAME];
 };
 
+struct rfd {
+	struct cb cb;
+	uint32_t reserved;
+	uint16_t actual_count;
+	uint16_t buffer_size;
+	uint8_t pkt_data[MAX_ETH_FRAME];
+};
+
+struct pci_record {
+	uint32_t reg_base[6];
+	uint32_t reg_size[6];
+	uint8_t irq_line;
+};
+
+struct pci_record pcircd;
+
+
+// Public Functions
 int nic_e100_enable(struct pci_func *);
 int nic_e100_trans_pkt(void *, uint32_t);
+int nic_e100_recv_pkt(void *);
 
 // TCB Command in TCB structure
 #define TCBCMD_NOP		0x0000
@@ -30,30 +51,44 @@ int nic_e100_trans_pkt(void *, uint32_t);
 #define TCBCMD_DUMP		0x0006
 #define TCBCMD_DIAGNOSE		0x0007
 
-#define TCBCMD_SUSPEND		0x4000
+// Go into Idle state after this frame is processed
+#define TCBCMD_EL		0x8000 
+// Go into Suspended state after this frame is processed
+#define TCBCMD_S		0x4000
 
-// TCB Status in TCB structure
-#define TCBSTS_C		0x8000
-#define TCBSTS_OK		0x2000
+// CB Status in CB structure
+#define CBSTS_C			0x8000
+#define CBSTS_OK		0x2000
 
 // SCB Command
 
-#define SCBCMD_CU_NOP			0x00
-#define SCBCMD_CU_START			0x10
-#define SCBCMD_CU_RESUME		0x20
-#define SCBCMD_CU_LOAD_COUNTER_ADD	0x40
-#define SCBCMD_CU_DUMP_STAT_COUNTER	0x50
-#define SCBCMD_CU_LOAD_BASE		0x60
-#define SCBCMD_CU_DUMP_RESET_COUNTER	0x70
-#define SCBCMD_CU_STATIC_RESUME		0xa0
+#define SCBCMD_CU_NOP			0x0000
+#define SCBCMD_CU_START			0x0010
+#define SCBCMD_CU_RESUME		0x0020
+#define SCBCMD_CU_LOAD_COUNTER_ADD	0x0040
+#define SCBCMD_CU_DUMP_STAT_COUNTER	0x0050
+#define SCBCMD_CU_LOAD_BASE		0x0060
+#define SCBCMD_CU_DUMP_RESET_COUNTER	0x0070
+#define SCBCMD_CU_STATIC_RESUME		0x00a0
 
-#define SCBCMD_RU_NOP		0x00
-#define SCBCMD_RU_START		0x01
-#define SCBCMD_RU_RESUME	0x02
-#define SCBCMD_RU_RDR		0x03
-#define SCBCMD_RU_ABORT		0x04
-#define SCBCMD_RU_LOAD_HDS	0x05
-#define SCBCMD_RU_LOAD_BASE	0x06
+#define SCBCMD_RU_NOP		0x0000
+#define SCBCMD_RU_START		0x0001
+#define SCBCMD_RU_RESUME	0x0002
+#define SCBCMD_RU_RDR		0x0003
+#define SCBCMD_RU_ABORT		0x0004
+#define SCBCMD_RU_LOAD_HDS	0x0005
+#define SCBCMD_RU_LOAD_BASE	0x0006
+
+// Enable Interrupts in SCB Command
+#define SCBINT_CX		0x8000  // CU interrupts when an action completed
+#define SCBINT_FR		0x4000  // RU interrupts when a frame is received
+#define SCBINT_CNA		0x2000  // CU interrupts when its status changed
+#define SCBINT_RNR		0x1000  // RU is not ready
+#define SCBINT_ER		0x0800  // Same with FR
+#define SCBINT_FCP		0x0400  // A flow control pause frame
+#define SCBINT_SI		0x0200  // For software interrupt
+#define SCBINT_M		0x0100  // Interrupt mask bit
+
 
 // SCB Status
 
@@ -70,5 +105,10 @@ int nic_e100_trans_pkt(void *, uint32_t);
 #define SCBSTS_RU_READY		0x10
 
 #define SCBSTS_RU_MASK		0x3C
+
+// RFD field
+#define RFD_EOF			0x8000
+#define RFD_F			0x4000
+#define RFD_LEN_MASK		0x3FFF
 
 #endif	// JOS_KERN_E100_H

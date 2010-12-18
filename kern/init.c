@@ -80,13 +80,13 @@ i386_init(void)
 	pci_init();
 
 	// Should always have an idle process as first one.
-	ENV_CREATE(user_idle);
+	ENV_CREATE(user_idle); // 0
 
 	// Start fs
-	ENV_CREATE(fs_fs);
+	ENV_CREATE(fs_fs); // 1
 
 	// Start ns.
-	ENV_CREATE(net_ns);	
+	ENV_CREATE(net_ns); // 2
 
 	// Start init
 #if defined(TEST)

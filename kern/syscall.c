@@ -232,11 +232,14 @@ sys_page_alloc(envid_t envid, void *va, int perm)
 		page_free(pp);
 		return -E_NO_MEM;
 	}
-	/* memset(va, 0, PGSIZE) won't work. Kernel cannot use the user's pgdir,
-	   va is the virtual address of the page which is in the user's page table,
-	   When kernel want to memset the pp, it must use the page's kernel virtual
-	   address. Use va, the kernel will find the corresponding physical page 
-	   which will not be this page*/
+
+	/* memset(va, 0, PGSIZE) won't work. Kernel cannot use the other user's pgdir, 
+	 * (NOT the Syscall Caller). When user uses syscall, it get into the kernel part
+	 * of its own page table. So, it is correct when accessing the virtual address
+	 * in its own page table. However, when this sys_page_alloc() allocated a page
+	 * for another env, the page is inserted into that env's page table.
+	 * Use va, the kernel will find the corresponding physical page in the current
+	 * page table which will not be the page we want*/
 	memset(page2kva(pp), 0, PGSIZE);
 	return 0;
 }
@@ -454,6 +457,17 @@ sys_transmit_packet(void *pkt_data, uint32_t datalen)
 	return nic_e100_trans_pkt(pkt_data, datalen);
 }
 
+static int
+sys_receive_packet(void *va)
+{
+	int pkt_len = 0;
+
+	user_mem_assert(curenv, va, MAX_ETH_FRAME, PTE_P | PTE_W);
+	pkt_len = nic_e100_recv_pkt(va);
+
+	return pkt_len;
+}
+
 // Dispatches to the correct kernel function, passing the arguments.
 int32_t
 syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5)
@@ -512,6 +526,9 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		break;
 	case SYS_transmit_packet:
 		ret = sys_transmit_packet((void *)a1, a2);
+		break;
+	case SYS_receive_packet:
+		ret = sys_receive_packet((void *)a1);
 		break;
 	default:
 		return -E_INVAL;

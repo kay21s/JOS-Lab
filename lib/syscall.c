@@ -126,5 +126,11 @@ sys_time_msec(void)
 int
 sys_transmit_packet(void *pkt_data, uint32_t datalen)
 {
-	return syscall(SYS_transmit_packet, 1, (uint32_t)pkt_data, (uint32_t)datalen, 0, 0, 0);
+	return syscall(SYS_transmit_packet, 0, (uint32_t)pkt_data, (uint32_t)datalen, 0, 0, 0);
+}
+
+int
+sys_receive_packet(void *va)
+{
+	return syscall(SYS_receive_packet, 0, (uint32_t)va, 0, 0, 0, 0);
 }
